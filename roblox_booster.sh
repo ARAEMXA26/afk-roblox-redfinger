@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==============================================================================
-# ROBLOX GAME BOOSTER FOR REDFINGER - ULTIMATE GOD TIER EDITION (v4.0)
+# ROBLOX GAME BOOSTER FOR REDFINGER - ULTIMATE GOD TIER EDITION (v4.5 PRO)
 # Author: Antigravity AI
-# Target: Maximum FPS, 24/7 AFK Farming & Unlimited Multi-Clone Optimization
+# Target: Auto-Detect ALL Roblox Apps & Clones + Android 11+ Permission Fix
 # ==============================================================================
 
 # Warna Text (ANSI Color Codes)
@@ -20,45 +20,110 @@ NC='\033[0m' # Reset Color
 show_header() {
     clear
     echo -e "${CYAN}${BOLD}====================================================${NC}"
-    echo -e "${GREEN}${BOLD} 🚀 ULTIMATE ROBLOX REDFINGER BOOSTER (v4.0 GOD TIER) 🚀${NC}"
+    echo -e "${GREEN}${BOLD} 🚀 ULTIMATE ROBLOX REDFINGER BOOSTER (v4.5 PRO) 🚀 ${NC}"
     echo -e "${CYAN}${BOLD}====================================================${NC}"
-    echo -e "${YELLOW}   Super FastFlags, ART Compilation & 24/7 AFK Guard  ${NC}"
+    echo -e "${YELLOW}   Auto-Detect Multi-Clone, FastFlags & Storage Fix   ${NC}"
     echo -e "${CYAN}====================================================${NC}\n"
 }
 
+# Cek Akses Root Sebenarnya (Tanpa Pesan Error "No su program found")
+IS_HAS_ROOT=""
+check_real_root() {
+    if [ -z "$IS_HAS_ROOT" ]; then
+        if command -v su &>/dev/null; then
+            if su -c "id" 2>/dev/null | grep -q "uid=0"; then
+                IS_HAS_ROOT="true"
+            else
+                IS_HAS_ROOT="false"
+            fi
+        else
+            IS_HAS_ROOT="false"
+        fi
+    fi
+    [ "$IS_HAS_ROOT" == "true" ]
+}
+
+# Memeriksa dan Meminta Izin Akses Penyimpanan (Termux & Android 11+)
 check_storage() {
     if [ ! -d "/sdcard/Android" ]; then
-        echo -e "${YELLOW}[!] Meminta izin akses penyimpanan...${NC}"
+        echo -e "${YELLOW}[!] Meminta izin penyimpanan dasar Termux...${NC}"
         termux-setup-storage
-        sleep 3
+        sleep 2
+    fi
+
+    # Cek Izin Akses Semua File untuk Android 11+
+    TEST_DIR="/sdcard/Android/data/.termux_test_$$"
+    mkdir -p "$TEST_DIR" 2>/dev/null
+    if [ ! -d "$TEST_DIR" ]; then
+        echo -e "${YELLOW}[!] Android 11+ Terdeteksi: Membuka Izin Akses Semua File...${NC}"
+        echo -e "${YELLOW}[!] Silakan aktifkan sakelar 'Izinkan Akses Semua File' untuk Termux.${NC}"
+        am start -a android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION -d package:com.termux 2>/dev/null
+        sleep 2
+    else
+        rm -rf "$TEST_DIR" 2>/dev/null
     fi
 }
 
+# Fungsi Pintar Mencari SEMUA Aplikasi Roblox (Utama + Semua Jenis Clone)
 find_roblox_dirs() {
     ROBLOX_PATHS=()
-    # Path Standar
-    if [ -d "/sdcard/Android/data/com.roblox.client" ]; then
-        ROBLOX_PATHS+=("/sdcard/Android/data/com.roblox.client")
+
+    # 1. Pindai Paket Terinstall via Android Package Manager (pm)
+    if command -v pm &>/dev/null; then
+        PKGS=$(pm list packages 2>/dev/null | grep -i "roblox" | cut -d: -f2)
+        for pkg in $PKGS; do
+            [ -n "$pkg" ] && [ -d "/sdcard/Android/data/$pkg" ] && ROBLOX_PATHS+=("/sdcard/Android/data/$pkg")
+            [ -n "$pkg" ] && [ -d "/data/data/$pkg" ] && ROBLOX_PATHS+=("/data/data/$pkg")
+            [ -n "$pkg" ] && [ -d "/data/user/0/$pkg" ] && ROBLOX_PATHS+=("/data/user/0/$pkg")
+        done
     fi
-    
-    # Path Kloning di SD Card
-    for dir in /sdcard/Android/data/*roblox* /sdcard/Android/data/*Roblox*; do
-        if [ -d "$dir" ] && [[ ! " ${ROBLOX_PATHS[*]} " =~ " ${dir} " ]]; then
-            ROBLOX_PATHS+=("$dir")
+
+    # 2. Pindai Folder /sdcard/Android/data/ untuk Semua Folder Berunsur Roblox
+    for dir in /sdcard/Android/data/*roblox* /sdcard/Android/data/*Roblox* /sdcard/Android/data/*ROBLOX*; do
+        if [ -d "$dir" ]; then
+            if [[ ! " ${ROBLOX_PATHS[*]} " =~ " ${dir} " ]]; then
+                ROBLOX_PATHS+=("$dir")
+            fi
         fi
     done
 
-    # Path Cloner Pihak Ketiga (App Cloner / Parallel Space / Island / Dual Space)
-    for clone_dir in /sdcard/Android/data/com.appcloner.*/files /sdcard/Android/data/com.lbe.parallel.*/files /sdcard/Android/data/com.excellance.multi.*/files; do
-        if [ -d "$clone_dir" ]; then
-            ROBLOX_PATHS+=("$clone_dir")
+    # 3. Pindai Folder Aplikasi Cloner Populer (App Cloner, Parallel Space, Dual Apps, Multiple Accounts, dll)
+    for clone_parent in \
+        /sdcard/Android/data/com.appcloner.*/files \
+        /sdcard/Android/data/com.lbe.parallel.*/files \
+        /sdcard/Android/data/com.excellance.multi.*/files \
+        /sdcard/Android/data/com.vphonegaga.*/files \
+        /sdcard/ParallelSpace/* \
+        /sdcard/DualSpace/* \
+        /sdcard/AppCloner/*; do
+        if [ -d "$clone_parent" ]; then
+            if [[ ! " ${ROBLOX_PATHS[*]} " =~ " ${clone_parent} " ]]; then
+                ROBLOX_PATHS+=("$clone_parent")
+            fi
         fi
     done
+
+    # 4. Fallback Default jika Belum Ada yang Terbaca
+    if [ ${#ROBLOX_PATHS[@]} -eq 0 ]; then
+        ROBLOX_PATHS+=("/sdcard/Android/data/com.roblox.client")
+    fi
+}
+
+# Tampilkan Daftar Roblox yang Terdeteksi
+show_detected_roblox() {
+    find_roblox_dirs
+    echo -e "${CYAN}${BOLD}[ 🔍 DETEKSI APLIKASI ROBLOX ]${NC}"
+    echo -e "${BLUE}[*] Ditemukan ${#ROBLOX_PATHS[@]} lokasi Roblox (Utama & Clone):${NC}"
+    for path in "${ROBLOX_PATHS[@]}"; do
+        echo -e "  ${GREEN}• $path${NC}"
+    done
+    echo -e ""
 }
 
 # 1. Extreme FastFlags Injector
 apply_extreme_fastflags() {
     show_header
+    show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 1. PASANG EXTREME FASTFLAGS (GRAPHICS OPTIMIZER) ]${NC}\n"
     echo -e "${WHITE}Pilih Tingkat Optimalisasi Grafik:${NC}"
     echo -e "${CYAN}[1] Mode Main Smooth (60 FPS)${NC} - Grafik Low, bayangan mati, cocok untuk main aktif."
@@ -82,7 +147,7 @@ apply_extreme_fastflags() {
             ;;
         3)
             FPS_LIMIT="15"
-            SKIP_MIPS="5" # Texture sangat polos (flat plastic)
+            SKIP_MIPS="5"
             DISABLE_MAT="True"
             DISABLE_GRASS="0"
             ;;
@@ -113,62 +178,81 @@ apply_extreme_fastflags() {
   \"FFlagDebugDisableMaterials\": \"$DISABLE_MAT\"
 }"
 
-    find_roblox_dirs
     echo -e "\n${BLUE}[*] Menerapkan FastFlags ke ${#ROBLOX_PATHS[@]} lokasi Roblox...${NC}"
+
+    TMP_JSON="$HOME/ClientAppSettings.json"
+    echo "$FASTFLAGS_JSON" > "$TMP_JSON"
+
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
 
     for path in "${ROBLOX_PATHS[@]}"; do
         SETTINGS_DIR="$path/files/ClientSettings"
+        TARGET_FILE="$SETTINGS_DIR/ClientAppSettings.json"
+        
         mkdir -p "$SETTINGS_DIR" 2>/dev/null
-        echo "$FASTFLAGS_JSON" > "$SETTINGS_DIR/ClientAppSettings.json"
-        echo -e "${GREEN}[✓] Dipasang di: $SETTINGS_DIR${NC}"
-    done
+        
+        # Penulisan File Aman
+        cp "$TMP_JSON" "$TARGET_FILE" 2>/dev/null || echo "$FASTFLAGS_JSON" > "$TARGET_FILE" 2>/dev/null
 
-    # Jika ada akses root / su
-    if command -v su &> /dev/null; then
-        su -c "
-        for dir in /data/data/*roblox* /data/data/com.roblox.client; do
-            if [ -d \"\$dir\" ]; then
-                mkdir -p \"\$dir/files/ClientSettings\"
-                echo '$FASTFLAGS_JSON' > \"\$dir/files/ClientSettings/ClientAppSettings.json\"
-                chmod 777 \"\$dir/files/ClientSettings/ClientAppSettings.json\"
+        if [ -f "$TARGET_FILE" ]; then
+            echo -e "${GREEN}[✓] Berhasil dipasang di: $path${NC}"
+            ((SUCCESS_COUNT++))
+        else
+            # Jika gagal, coba dengan root (jika ada)
+            if check_real_root; then
+                su -c "mkdir -p $SETTINGS_DIR && echo '$FASTFLAGS_JSON' > $TARGET_FILE && chmod 777 $TARGET_FILE" 2>/dev/null
+                if [ -f "$TARGET_FILE" ]; then
+                    echo -e "${GREEN}[✓] Berhasil dipasang (Root) di: $path${NC}"
+                    ((SUCCESS_COUNT++))
+                    continue
+                fi
             fi
-        done
-        " 2>/dev/null
-    fi
 
-    echo -e "\n${GREEN}${BOLD}=== FastFlags Kustom Berhasil Diterapkan! ===${NC}"
+            echo -e "${RED}[×] Gagal akses file di: $path${NC}"
+            echo -e "${YELLOW}    Solusi: Aktifkan izin 'Akses Semua File' Termux di Pengaturan Android Redfinger.${NC}"
+            ((FAIL_COUNT++))
+        fi
+    done
+    rm -f "$TMP_JSON" 2>/dev/null
+
+    echo -e "\n${GREEN}${BOLD}=== Hasil: $SUCCESS_COUNT Berhasil, $FAIL_COUNT Gagal ===${NC}"
     read -p "Tekan ENTER untuk kembali..." temp
 }
 
-# 2. ART Bytecode Pre-Compilation (Mempercepat Loading & CPU Execution)
+# 2. ART Bytecode Pre-Compilation
 compile_roblox_art() {
     show_header
+    show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 2. ADVANCED ANDROID ART COMPILATION ]${NC}\n"
-    echo -e "${WHITE}Fitur ini akan mengomplikasi kode Roblox menjadi kode native C++ di Android Redfinger.${NC}"
-    echo -e "${WHITE}Hasilnya: Game loading lebih cepat, stuttering berkurang drastis, & CPU lebih adem.${NC}\n"
 
-    if command -v cmd &> /dev/null || command -v su &> /dev/null; then
-        echo -e "${BLUE}[*] Mengompilasi paket com.roblox.client (Speed Profile)...${NC}"
-        if command -v su &> /dev/null; then
-            su -c "cmd package compile -m speed com.roblox.client" 2>/dev/null
-        else
-            cmd package compile -m speed com.roblox.client 2>/dev/null
+    if command -v pm &>/dev/null; then
+        PKGS=$(pm list packages 2>/dev/null | grep -i "roblox" | cut -d: -f2)
+        if [ -z "$PKGS" ]; then
+            PKGS="com.roblox.client"
         fi
-        echo -e "${GREEN}[✓] Kompilasi ART Roblox Selesai! (Performance Maximized).${NC}"
-    else
-        echo -e "${YELLOW}[!] Perintah 'cmd package' membutuhkan izin ADB/Root.${NC}"
+        
+        for pkg in $PKGS; do
+            echo -e "${BLUE}[*] Mengompilasi paket $pkg (Speed Profile)...${NC}"
+            if check_real_root; then
+                su -c "cmd package compile -m speed $pkg" 2>/dev/null
+            else
+                cmd package compile -m speed $pkg 2>/dev/null
+            fi
+            echo -e "${GREEN}[✓] Kompilasi ART $pkg Selesai!${NC}"
+        done
     fi
 
-    echo -e "\n${GREEN}${BOLD}=== Optimalisasi ART Selesai! ===${NC}"
+    echo -e "\n${GREEN}${BOLD}=== Kompilasi Paket Roblox Selesai! ===${NC}"
     read -p "Tekan ENTER untuk kembali..." temp
 }
 
-# 3. Deep Memory & Process Tuning
+# 3. Deep RAM & Process Tuning
 deep_memory_tune() {
     show_header
-    echo -e "${PURPLE}${BOLD}[ 3. DEEP RAM & PROCESS TUNING ]${NC}\n"
+    show_detected_roblox
+    echo -e "${PURPLE}${BOLD}[ 3. DEEP RAM & CPU PRIORITY TUNING ]${NC}\n"
     
-    # 1. Mati Animasi Sistem
     if command -v settings &> /dev/null; then
         settings put global window_animation_scale 0.0 2>/dev/null
         settings put global transition_animation_scale 0.0 2>/dev/null
@@ -176,14 +260,12 @@ deep_memory_tune() {
         echo -e "${GREEN}[✓] Animasi Sistem dimatikan (0.0x).${NC}"
     fi
 
-    # 2. Prioritas CPU Roblox (renice)
-    echo -e "${BLUE}[*] Meningkatkan prioritas CPU untuk proses Roblox...${NC}"
-    for pid in $(pidof com.roblox.client); do
+    echo -e "${BLUE}[*] Meningkatkan prioritas CPU untuk semua proses Roblox...${NC}"
+    for pid in $(pgrep -i roblox 2>/dev/null || pidof com.roblox.client); do
         renice -n -10 -p $pid 2>/dev/null
         echo -e "${GREEN}[✓] CPU Priority dinaikkan untuk PID: $pid${NC}"
     done
 
-    # 3. Clean Cache
     find_roblox_dirs
     for path in "${ROBLOX_PATHS[@]}"; do
         rm -rf "$path/files/logs"/* 2>/dev/null
@@ -191,9 +273,9 @@ deep_memory_tune() {
     done
     rm -rf /sdcard/Android/data/*/cache/* 2>/dev/null
 
-    if command -v su &> /dev/null; then
+    if check_real_root; then
         su -c "sync; echo 3 > /proc/sys/vm/drop_caches; am kill-all" 2>/dev/null
-        echo -e "${GREEN}[✓] RAM Kernel Buffer berhasil dikosongkan.${NC}"
+        echo -e "${GREEN}[✓] RAM Kernel Buffer berhasil dikosongkan (Root).${NC}"
     fi
 
     echo -e "\n${GREEN}${BOLD}=== Memory & Process Tuning Selesai! ===${NC}"
@@ -203,12 +285,10 @@ deep_memory_tune() {
 # 4. Background 24/7 AFK Guard Daemon
 start_afk_guard() {
     show_header
-    echo -e "${PURPLE}${BOLD}[ 4. NALAKAN 24/7 AFK AUTO-CLEANER DAEMON ]${NC}\n"
-    echo -e "${WHITE}Daemon ini akan berjalan secara otomatis di background Termux.${NC}"
-    echo -e "${WHITE}Tugasnya: Membersihkan log & cache sampah Roblox setiap 15 menit saat Anda AFK,${NC}"
-    echo -e "${WHITE}sehingga Redfinger TIDAK AKAN LAG atau lemot meskipun ditinggal 24 jam nonstop!${NC}\n"
+    show_detected_roblox
+    echo -e "${PURPLE}${BOLD}[ 4. NYALAKAN 24/7 AFK AUTO-CLEANER DAEMON ]${NC}\n"
     
-    read -p "Jalankan Auto-Cleaner Daemon? (y/n): " confirm
+    read -p "Jalankan Auto-Cleaner Daemon untuk semua Roblox? (y/n): " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}[*] Memulai background guard daemon...${NC}"
         (
@@ -223,7 +303,6 @@ start_afk_guard() {
             done
         ) &
         echo -e "${GREEN}[✓] Daemon AFK Guard aktif di latar belakang (PID: $!)!${NC}"
-        echo -e "${GREEN}[✓] Anda bisa membiarkan Termux terbuka / di background.${NC}"
     fi
 
     echo -e "\n${GREEN}${BOLD}=== Daemon Aktif! ===${NC}"
@@ -233,6 +312,7 @@ start_afk_guard() {
 # 5. Restore Defaults
 restore_defaults() {
     show_header
+    show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 5. RESTORE DEFAULT SETTINGS ]${NC}\n"
     
     find_roblox_dirs
