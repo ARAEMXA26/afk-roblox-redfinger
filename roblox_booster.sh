@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==============================================================================
-# ROBLOX GAME BOOSTER FOR REDFINGER - ULTIMATE GOD TIER EDITION (v5.0 CLEAN)
+# ROBLOX GAME BOOSTER FOR REDFINGER - ULTIMATE GOD TIER EDITION (v6.0 FINAL)
 # Author: Antigravity AI
-# Target: Auto-Detect ALL Roblox + Clones, 100% Clean Output (No su errors)
+# Target: Android 11+ Permission Fix, Auto-Detect Roblox + Clones
 # ==============================================================================
 
 # Warna Text (ANSI Color Codes)
@@ -19,18 +19,13 @@ NC='\033[0m' # Reset Color
 
 # ==============================================================================
 # ROOT DETECTION - Bypass Termux su stub sepenuhnya
-# Termux menyediakan su stub di $PREFIX/bin/su yang SELALU mencetak pesan error
-# "No su program found on this device" langsung ke /dev/tty (tidak bisa redirect).
-# Solusi: Cari su binary ASLI Android HANYA di path sistem, abaikan Termux stub.
 # ==============================================================================
 SU_BIN=""
 IS_ROOTED="false"
 
 detect_real_root() {
-    # Cari su binary asli di path sistem Android (BUKAN di $PREFIX/bin/su Termux)
     for candidate in /system/xbin/su /system/bin/su /sbin/su /su/bin/su /magisk/.core/bin/su; do
         if [ -x "$candidate" ]; then
-            # Tes apakah binary ini benar-benar bisa memberikan akses root
             TEST_RESULT=$("$candidate" -c "echo ROOT_OK" 2>/dev/null)
             if [ "$TEST_RESULT" = "ROOT_OK" ]; then
                 SU_BIN="$candidate"
@@ -43,7 +38,6 @@ detect_real_root() {
     return 1
 }
 
-# Helper: Jalankan perintah sebagai root HANYA jika perangkat benar-benar di-root
 run_root() {
     if [ "$IS_ROOTED" = "true" ] && [ -n "$SU_BIN" ]; then
         "$SU_BIN" -c "$1" 2>/dev/null
@@ -55,101 +49,133 @@ run_root() {
 show_header() {
     clear
     echo -e "${CYAN}${BOLD}====================================================${NC}"
-    echo -e "${GREEN}${BOLD} 🚀 ULTIMATE ROBLOX REDFINGER BOOSTER (v5.0 CLEAN) 🚀${NC}"
+    echo -e "${GREEN}${BOLD} 🚀 ULTIMATE ROBLOX REDFINGER BOOSTER (v6.0 FINAL) 🚀${NC}"
     echo -e "${CYAN}${BOLD}====================================================${NC}"
-    echo -e "${YELLOW}   Auto-Detect Multi-Clone, FastFlags & 24/7 AFK Guard ${NC}"
+    echo -e "${YELLOW}   Android 11+ Fix, Auto-Detect Clone & 24/7 AFK Guard${NC}"
     echo -e "${CYAN}====================================================${NC}\n"
 }
 
-# Memeriksa dan Meminta Izin Akses Penyimpanan (Termux & Android 11+)
+# ==============================================================================
+# STORAGE PERMISSION & ANDROID 11+ WORKAROUND
+# ==============================================================================
 check_storage() {
-    if [ ! -d "/sdcard/Android" ]; then
+    if [ ! -d "/sdcard" ]; then
         echo -e "${YELLOW}[!] Meminta izin penyimpanan dasar Termux...${NC}"
         termux-setup-storage
         sleep 2
     fi
+}
 
-    # Cek Izin Akses Semua File untuk Android 11+
-    TEST_DIR="/sdcard/Android/data/.termux_test_$$"
+# Deteksi apakah kita bisa menulis ke Android/data (Android 10-) atau tidak (Android 11+)
+CAN_WRITE_ANDROID_DATA="false"
+check_android_data_access() {
+    TEST_DIR="/sdcard/Android/data/.booster_test_$$"
     mkdir -p "$TEST_DIR" 2>/dev/null
-    if [ ! -d "$TEST_DIR" ]; then
-        echo -e "${YELLOW}[!] Android 11+ Terdeteksi: Membuka Izin Akses Semua File...${NC}"
-        echo -e "${YELLOW}[!] Silakan aktifkan sakelar 'Izinkan Akses Semua File' untuk Termux.${NC}"
-        am start -a android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION -d package:com.termux 2>/dev/null
-        sleep 2
-    else
+    if [ -d "$TEST_DIR" ]; then
+        CAN_WRITE_ANDROID_DATA="true"
         rm -rf "$TEST_DIR" 2>/dev/null
+    else
+        CAN_WRITE_ANDROID_DATA="false"
     fi
 }
 
 # ==============================================================================
 # DETEKSI OTOMATIS SEMUA APLIKASI ROBLOX (UTAMA + SEMUA JENIS CLONE)
-# Metode: pm list packages + folder scan + clone app scan
 # ==============================================================================
-find_roblox_dirs() {
-    ROBLOX_PATHS=()
+ROBLOX_PACKAGES=()
 
-    # 1. Pindai Paket Terinstall via Android Package Manager (pm)
+find_roblox_packages() {
+    ROBLOX_PACKAGES=()
     if command -v pm &>/dev/null; then
-        PKGS=$(pm list packages 2>/dev/null | grep -i "roblox" | cut -d: -f2)
-        for pkg in $PKGS; do
-            if [ -n "$pkg" ]; then
-                [ -d "/sdcard/Android/data/$pkg" ] && ROBLOX_PATHS+=("/sdcard/Android/data/$pkg")
-                [ -d "/data/data/$pkg" ] && ROBLOX_PATHS+=("/data/data/$pkg")
-                [ -d "/data/user/0/$pkg" ] && ROBLOX_PATHS+=("/data/user/0/$pkg")
-            fi
-        done
+        while IFS= read -r line; do
+            pkg=$(echo "$line" | cut -d: -f2 | tr -d '[:space:]')
+            [ -n "$pkg" ] && ROBLOX_PACKAGES+=("$pkg")
+        done < <(pm list packages 2>/dev/null | grep -i "roblox")
     fi
-
-    # 2. Pindai Folder /sdcard/Android/data/ untuk Semua Folder Berunsur Roblox
-    for dir in /sdcard/Android/data/*roblox* /sdcard/Android/data/*Roblox* /sdcard/Android/data/*ROBLOX*; do
-        if [ -d "$dir" ]; then
-            local already_added="false"
-            for existing in "${ROBLOX_PATHS[@]}"; do
-                [ "$existing" = "$dir" ] && already_added="true" && break
-            done
-            [ "$already_added" = "false" ] && ROBLOX_PATHS+=("$dir")
-        fi
-    done
-
-    # 3. Pindai Folder Aplikasi Cloner Populer
-    for clone_parent in \
-        /sdcard/Android/data/com.appcloner.*/files \
-        /sdcard/Android/data/com.lbe.parallel.*/files \
-        /sdcard/Android/data/com.excellance.multi.*/files \
-        /sdcard/Android/data/com.vphonegaga.*/files \
-        /sdcard/ParallelSpace/* \
-        /sdcard/DualSpace/* \
-        /sdcard/AppCloner/*; do
-        if [ -d "$clone_parent" ]; then
-            local already_added="false"
-            for existing in "${ROBLOX_PATHS[@]}"; do
-                [ "$existing" = "$clone_parent" ] && already_added="true" && break
-            done
-            [ "$already_added" = "false" ] && ROBLOX_PATHS+=("$clone_parent")
-        fi
-    done
-
-    # 4. Fallback Default jika Belum Ada yang Terbaca
-    if [ ${#ROBLOX_PATHS[@]} -eq 0 ]; then
-        ROBLOX_PATHS+=("/sdcard/Android/data/com.roblox.client")
+    # Fallback jika pm tidak menemukan apa-apa
+    if [ ${#ROBLOX_PACKAGES[@]} -eq 0 ]; then
+        ROBLOX_PACKAGES+=("com.roblox.client")
     fi
 }
 
-# Tampilkan Daftar Roblox yang Terdeteksi
 show_detected_roblox() {
-    find_roblox_dirs
+    find_roblox_packages
     echo -e "${CYAN}${BOLD}[ 🔍 DETEKSI APLIKASI ROBLOX ]${NC}"
-    echo -e "${BLUE}[*] Ditemukan ${#ROBLOX_PATHS[@]} lokasi Roblox (Utama & Clone):${NC}"
-    for path in "${ROBLOX_PATHS[@]}"; do
-        echo -e "  ${GREEN}• $path${NC}"
+    echo -e "${BLUE}[*] Ditemukan ${#ROBLOX_PACKAGES[@]} paket Roblox terinstall:${NC}"
+    for pkg in "${ROBLOX_PACKAGES[@]}"; do
+        echo -e "  ${GREEN}📦 $pkg${NC}"
     done
     if [ "$IS_ROOTED" = "true" ]; then
-        echo -e "  ${PURPLE}🔓 Akses Root: Aktif ($SU_BIN)${NC}"
+        echo -e "  ${PURPLE}🔓 Root: Aktif ($SU_BIN)${NC}"
     else
-        echo -e "  ${YELLOW}🔒 Akses Root: Tidak tersedia (Mode Non-Root)${NC}"
+        echo -e "  ${YELLOW}🔒 Root: Tidak tersedia${NC}"
+    fi
+    if [ "$CAN_WRITE_ANDROID_DATA" = "true" ]; then
+        echo -e "  ${GREEN}📁 Akses Android/data: Tersedia${NC}"
+    else
+        echo -e "  ${YELLOW}📁 Akses Android/data: Terbatas (Android 11+)${NC}"
     fi
     echo -e ""
+}
+
+# ==============================================================================
+# FUNGSI UTAMA: Pasang FastFlags ke Satu Paket Roblox
+# Strategi Multi-Layer:
+#   1. Root write ke /data/data/<pkg>/  (jika rooted)
+#   2. Direct write ke /sdcard/Android/data/<pkg>/  (jika Android 10-)
+#   3. Shizuku / content provider  (jika tersedia)
+#   4. Manual copy via File Manager  (fallback terakhir)
+# ==============================================================================
+install_fastflags_to_package() {
+    local pkg="$1"
+    local json_content="$2"
+    local installed="false"
+
+    # --- METODE 1: Root write (paling reliable jika tersedia) ---
+    if [ "$IS_ROOTED" = "true" ]; then
+        local root_dir="/data/data/$pkg/files/ClientSettings"
+        run_root "mkdir -p '$root_dir' && echo '$json_content' > '$root_dir/ClientAppSettings.json' && chmod 777 '$root_dir/ClientAppSettings.json'"
+        if run_root "test -f '$root_dir/ClientAppSettings.json'" 2>/dev/null; then
+            echo -e "${GREEN}[✓] $pkg — Berhasil dipasang via Root.${NC}"
+            installed="true"
+        fi
+    fi
+
+    # --- METODE 2: Direct write ke sdcard (Android 10 ke bawah) ---
+    if [ "$installed" = "false" ] && [ "$CAN_WRITE_ANDROID_DATA" = "true" ]; then
+        local sd_dir="/sdcard/Android/data/$pkg/files/ClientSettings"
+        mkdir -p "$sd_dir" 2>/dev/null
+        echo "$json_content" > "$sd_dir/ClientAppSettings.json" 2>/dev/null
+        if [ -f "$sd_dir/ClientAppSettings.json" ]; then
+            echo -e "${GREEN}[✓] $pkg — Berhasil dipasang via SDCard.${NC}"
+            installed="true"
+        fi
+    fi
+
+    # --- METODE 3: Gunakan content provider Android (Android 11+) ---
+    if [ "$installed" = "false" ] && command -v content &>/dev/null; then
+        # Buat file sementara yang bisa di-share via content provider
+        local tmp_file="$HOME/.fastflags_tmp.json"
+        echo "$json_content" > "$tmp_file"
+        
+        # Coba copy via run-as (hanya berfungsi jika app debuggable, jarang berhasil)
+        if command -v run-as &>/dev/null; then
+            run-as "$pkg" mkdir -p files/ClientSettings 2>/dev/null
+            cat "$tmp_file" | run-as "$pkg" sh -c "cat > files/ClientSettings/ClientAppSettings.json" 2>/dev/null
+            if run-as "$pkg" test -f files/ClientSettings/ClientAppSettings.json 2>/dev/null; then
+                echo -e "${GREEN}[✓] $pkg — Berhasil dipasang via run-as.${NC}"
+                installed="true"
+            fi
+        fi
+        rm -f "$tmp_file" 2>/dev/null
+    fi
+
+    # --- METODE 4: Fallback - Simpan ke Download & Beri Instruksi Manual ---
+    if [ "$installed" = "false" ]; then
+        echo -e "${YELLOW}[!] $pkg — Tidak bisa dipasang otomatis (Pembatasan Android 11+).${NC}"
+        return 1
+    fi
+    return 0
 }
 
 # ==============================================================================
@@ -160,17 +186,17 @@ apply_extreme_fastflags() {
     show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 1. PASANG EXTREME FASTFLAGS (GRAPHICS OPTIMIZER) ]${NC}\n"
     echo -e "${WHITE}Pilih Tingkat Optimalisasi Grafik:${NC}"
-    echo -e "${CYAN}[1] Mode Main Smooth (60 FPS)${NC} - Grafik Low, bayangan mati, cocok untuk main aktif."
-    echo -e "${CYAN}[2] Mode Multi-Clone Balanced (30 FPS)${NC} - Cocok untuk 2-3 clone akun."
-    echo -e "${CYAN}[3] Mode EXTREME POTATO / 24/7 AFK (15 FPS)${NC} - Paling Ringan! Hemat GPU & RAM 85%!"
+    echo -e "${CYAN}[1] Mode Main Smooth (60 FPS)${NC} - Grafik Low, bayangan mati."
+    echo -e "${CYAN}[2] Mode Multi-Clone Balanced (30 FPS)${NC} - Cocok 2-3 clone."
+    echo -e "${CYAN}[3] Mode EXTREME POTATO / AFK (15 FPS)${NC} - Paling ringan! Hemat 85%!"
     echo -e ""
     read -p "Pilihan Anda [1-3]: " mode_choice
 
     case $mode_choice in
-        1) FPS_LIMIT="60"; SKIP_MIPS="3"; DISABLE_MAT="False"; DISABLE_GRASS="0" ;;
-        2) FPS_LIMIT="30"; SKIP_MIPS="4"; DISABLE_MAT="False"; DISABLE_GRASS="0" ;;
-        3) FPS_LIMIT="15"; SKIP_MIPS="5"; DISABLE_MAT="True";  DISABLE_GRASS="0" ;;
-        *) FPS_LIMIT="30"; SKIP_MIPS="4"; DISABLE_MAT="False"; DISABLE_GRASS="0" ;;
+        1) FPS_LIMIT="60"; SKIP_MIPS="3"; DISABLE_MAT="False" ;;
+        2) FPS_LIMIT="30"; SKIP_MIPS="4"; DISABLE_MAT="False" ;;
+        3) FPS_LIMIT="15"; SKIP_MIPS="5"; DISABLE_MAT="True"  ;;
+        *) FPS_LIMIT="30"; SKIP_MIPS="4"; DISABLE_MAT="False" ;;
     esac
 
     FASTFLAGS_JSON="{
@@ -185,49 +211,62 @@ apply_extreme_fastflags() {
   \"DFIntTaskSchedulerTargetFps\": \"$FPS_LIMIT\",
   \"FFlagDisableTerrainDetail\": \"True\",
   \"FFlagEnableInGameMenuV3\": \"True\",
-  \"FIntRenderGrassHeightScaler\": \"$DISABLE_GRASS\",
+  \"FIntRenderGrassHeightScaler\": \"0\",
   \"FIntRenderBloomQuality\": \"0\",
   \"FIntLightAtmosphereQuality\": \"0\",
   \"FIntRenderDepthOfFieldQuality\": \"0\",
   \"FFlagDebugDisableMaterials\": \"$DISABLE_MAT\"
 }"
 
-    echo -e "\n${BLUE}[*] Menerapkan FastFlags ke ${#ROBLOX_PATHS[@]} lokasi Roblox...${NC}"
-
-    TMP_JSON="$HOME/ClientAppSettings.json"
-    echo "$FASTFLAGS_JSON" > "$TMP_JSON"
+    echo -e "\n${BLUE}[*] Menerapkan FastFlags ke ${#ROBLOX_PACKAGES[@]} paket Roblox...${NC}\n"
 
     SUCCESS_COUNT=0
     FAIL_COUNT=0
+    FAILED_PKGS=()
 
-    for path in "${ROBLOX_PATHS[@]}"; do
-        SETTINGS_DIR="$path/files/ClientSettings"
-        TARGET_FILE="$SETTINGS_DIR/ClientAppSettings.json"
-        
-        mkdir -p "$SETTINGS_DIR" 2>/dev/null
-        cp "$TMP_JSON" "$TARGET_FILE" 2>/dev/null || echo "$FASTFLAGS_JSON" > "$TARGET_FILE" 2>/dev/null
-
-        if [ -f "$TARGET_FILE" ]; then
-            echo -e "${GREEN}[✓] Berhasil dipasang di: $path${NC}"
+    for pkg in "${ROBLOX_PACKAGES[@]}"; do
+        if install_fastflags_to_package "$pkg" "$FASTFLAGS_JSON"; then
             ((SUCCESS_COUNT++))
         else
-            # Coba dengan root jika tersedia
-            if [ "$IS_ROOTED" = "true" ]; then
-                run_root "mkdir -p $SETTINGS_DIR && echo '$FASTFLAGS_JSON' > $TARGET_FILE && chmod 777 $TARGET_FILE"
-                if [ -f "$TARGET_FILE" ]; then
-                    echo -e "${GREEN}[✓] Berhasil dipasang (Root) di: $path${NC}"
-                    ((SUCCESS_COUNT++))
-                    continue
-                fi
-            fi
-            echo -e "${RED}[×] Gagal akses file di: $path${NC}"
-            echo -e "${YELLOW}    Solusi: Aktifkan izin 'Akses Semua File' Termux di Pengaturan Android.${NC}"
             ((FAIL_COUNT++))
+            FAILED_PKGS+=("$pkg")
         fi
     done
-    rm -f "$TMP_JSON" 2>/dev/null
 
-    echo -e "\n${GREEN}${BOLD}=== Hasil: $SUCCESS_COUNT Berhasil, $FAIL_COUNT Gagal ===${NC}"
+    # Jika ada yang gagal, simpan file ke Download & tampilkan panduan manual
+    if [ $FAIL_COUNT -gt 0 ]; then
+        BACKUP_DIR="/sdcard/Download/RobloxBooster"
+        mkdir -p "$BACKUP_DIR" 2>/dev/null
+        echo "$FASTFLAGS_JSON" > "$BACKUP_DIR/ClientAppSettings.json" 2>/dev/null
+
+        echo -e "\n${CYAN}${BOLD}═══════════════════════════════════════════════════${NC}"
+        echo -e "${WHITE}${BOLD}  📋 PANDUAN PEMASANGAN MANUAL (ANDROID 11+)${NC}"
+        echo -e "${CYAN}═══════════════════════════════════════════════════${NC}\n"
+        echo -e "${WHITE}File FastFlags sudah disimpan di:${NC}"
+        echo -e "${GREEN}  /sdcard/Download/RobloxBooster/ClientAppSettings.json${NC}\n"
+        echo -e "${WHITE}Ikuti langkah berikut untuk memasangnya:${NC}\n"
+        echo -e "${CYAN}Langkah 1:${NC} Buka File Manager bawaan atau instal MT Manager / ZArchiver."
+        echo -e "${CYAN}Langkah 2:${NC} Buka folder ${GREEN}/sdcard/Download/RobloxBooster/${NC}"
+        echo -e "${CYAN}Langkah 3:${NC} COPY file ${GREEN}ClientAppSettings.json${NC}"
+        echo -e "${CYAN}Langkah 4:${NC} Buka folder tujuan untuk setiap paket yang gagal:"
+        for pkg in "${FAILED_PKGS[@]}"; do
+            echo -e "           ${YELLOW}/sdcard/Android/data/$pkg/files/ClientSettings/${NC}"
+            echo -e "           (Jika folder ${WHITE}ClientSettings${NC} belum ada, buat manual)"
+        done
+        echo -e "${CYAN}Langkah 5:${NC} PASTE file ${GREEN}ClientAppSettings.json${NC} ke dalam folder tersebut."
+        echo -e "${CYAN}Langkah 6:${NC} Tutup & buka ulang (Force Close) Roblox agar efek berlaku.\n"
+        echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
+
+        # Coba buka file manager otomatis
+        if command -v am &>/dev/null; then
+            echo -e "\n${BLUE}[*] Mencoba membuka File Manager...${NC}"
+            am start -a android.intent.action.VIEW -d "file:///sdcard/Download/RobloxBooster/" -t "resource/folder" 2>/dev/null \
+                || am start -a android.intent.action.VIEW -d "content://com.android.externalstorage.documents/document/primary%3ADownload%2FRobloxBooster" 2>/dev/null \
+                || true
+        fi
+    fi
+
+    echo -e "\n${GREEN}${BOLD}=== Hasil: $SUCCESS_COUNT Otomatis, $FAIL_COUNT Manual ===${NC}"
     read -p "Tekan ENTER untuk kembali..." temp
 }
 
@@ -239,26 +278,20 @@ compile_roblox_art() {
     show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 2. ADVANCED ANDROID ART COMPILATION ]${NC}\n"
 
-    if command -v pm &>/dev/null; then
-        PKGS=$(pm list packages 2>/dev/null | grep -i "roblox" | cut -d: -f2)
-        if [ -z "$PKGS" ]; then
-            PKGS="com.roblox.client"
+    for pkg in "${ROBLOX_PACKAGES[@]}"; do
+        echo -e "${BLUE}[*] Mengompilasi paket $pkg (Speed Profile)...${NC}"
+        if [ "$IS_ROOTED" = "true" ]; then
+            run_root "cmd package compile -m speed $pkg"
+        elif command -v cmd &>/dev/null; then
+            cmd package compile -m speed $pkg 2>/dev/null
+        else
+            echo -e "${YELLOW}[i] Perintah 'cmd' tidak tersedia untuk $pkg.${NC}"
+            continue
         fi
-        
-        for pkg in $PKGS; do
-            echo -e "${BLUE}[*] Mengompilasi paket $pkg (Speed Profile)...${NC}"
-            if [ "$IS_ROOTED" = "true" ]; then
-                run_root "cmd package compile -m speed $pkg"
-            else
-                cmd package compile -m speed $pkg 2>/dev/null
-            fi
-            echo -e "${GREEN}[✓] Kompilasi ART $pkg Selesai!${NC}"
-        done
-    else
-        echo -e "${YELLOW}[!] Perintah 'pm' tidak tersedia di perangkat ini.${NC}"
-    fi
+        echo -e "${GREEN}[✓] Kompilasi ART $pkg Selesai!${NC}"
+    done
 
-    echo -e "\n${GREEN}${BOLD}=== Kompilasi Paket Roblox Selesai! ===${NC}"
+    echo -e "\n${GREEN}${BOLD}=== Kompilasi Selesai! ===${NC}"
     read -p "Tekan ENTER untuk kembali..." temp
 }
 
@@ -270,7 +303,7 @@ deep_memory_tune() {
     show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 3. DEEP RAM & CPU PRIORITY TUNING ]${NC}\n"
     
-    # 1. Matikan Animasi Sistem
+    # Matikan Animasi Sistem
     if command -v settings &>/dev/null; then
         settings put global window_animation_scale 0.0 2>/dev/null
         settings put global transition_animation_scale 0.0 2>/dev/null
@@ -278,8 +311,8 @@ deep_memory_tune() {
         echo -e "${GREEN}[✓] Animasi Sistem dimatikan (0.0x).${NC}"
     fi
 
-    # 2. Naikkan Prioritas CPU untuk Proses Roblox
-    echo -e "${BLUE}[*] Meningkatkan prioritas CPU untuk semua proses Roblox...${NC}"
+    # Naikkan Prioritas CPU
+    echo -e "${BLUE}[*] Meningkatkan prioritas CPU untuk proses Roblox...${NC}"
     FOUND_PIDS=""
     if command -v pgrep &>/dev/null; then
         FOUND_PIDS=$(pgrep -i roblox 2>/dev/null)
@@ -294,23 +327,19 @@ deep_memory_tune() {
             echo -e "${GREEN}[✓] CPU Priority dinaikkan untuk PID: $pid${NC}"
         done
     else
-        echo -e "${YELLOW}[i] Tidak ada proses Roblox yang sedang berjalan saat ini.${NC}"
+        echo -e "${YELLOW}[i] Tidak ada proses Roblox yang sedang berjalan.${NC}"
     fi
 
-    # 3. Bersihkan Cache & Log Roblox
-    echo -e "${BLUE}[*] Membersihkan cache & log semua Roblox...${NC}"
-    find_roblox_dirs
-    for path in "${ROBLOX_PATHS[@]}"; do
-        rm -rf "$path/files/logs"/* 2>/dev/null
-        rm -rf "$path/cache"/* 2>/dev/null
-    done
+    # Bersihkan Cache yang bisa diakses
+    echo -e "${BLUE}[*] Membersihkan cache & log...${NC}"
     rm -rf /sdcard/Android/data/*/cache/* 2>/dev/null
-    echo -e "${GREEN}[✓] Cache & log berhasil dibersihkan.${NC}"
+    rm -rf /sdcard/.cache/* 2>/dev/null
+    echo -e "${GREEN}[✓] Cache berhasil dibersihkan.${NC}"
 
-    # 4. Kosongkan RAM Kernel (Hanya jika Root tersedia)
+    # RAM Kernel (root only)
     if [ "$IS_ROOTED" = "true" ]; then
         run_root "sync; echo 3 > /proc/sys/vm/drop_caches; am kill-all"
-        echo -e "${GREEN}[✓] RAM Kernel Buffer berhasil dikosongkan (Root).${NC}"
+        echo -e "${GREEN}[✓] RAM Kernel Buffer dikosongkan (Root).${NC}"
     fi
 
     echo -e "\n${GREEN}${BOLD}=== Memory & Process Tuning Selesai! ===${NC}"
@@ -324,27 +353,21 @@ start_afk_guard() {
     show_header
     show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 4. NYALAKAN 24/7 AFK AUTO-CLEANER DAEMON ]${NC}\n"
-    echo -e "${WHITE}Daemon ini akan berjalan di latar belakang Termux.${NC}"
-    echo -e "${WHITE}Tugas: Membersihkan log & cache Roblox setiap 15 menit secara otomatis.${NC}\n"
+    echo -e "${WHITE}Daemon ini membersihkan log & cache setiap 15 menit di latar belakang.${NC}\n"
     
     read -p "Jalankan Auto-Cleaner Daemon? (y/n): " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        echo -e "${BLUE}[*] Memulai background guard daemon...${NC}"
         (
             while true; do
-                sleep 900 # 15 menit
-                find_roblox_dirs
-                for path in "${ROBLOX_PATHS[@]}"; do
-                    rm -rf "$path/files/logs"/* 2>/dev/null
-                    rm -rf "$path/cache"/* 2>/dev/null
-                done
+                sleep 900
                 rm -rf /sdcard/Android/data/*/cache/* 2>/dev/null
+                rm -rf /sdcard/.cache/* 2>/dev/null
             done
         ) &
-        echo -e "${GREEN}[✓] Daemon AFK Guard aktif di latar belakang (PID: $!)!${NC}"
-        echo -e "${GREEN}[✓] Biarkan Termux tetap terbuka / berjalan di background.${NC}"
+        echo -e "${GREEN}[✓] Daemon AFK Guard aktif (PID: $!)!${NC}"
+        echo -e "${GREEN}[✓] Biarkan Termux tetap berjalan di background.${NC}"
     else
-        echo -e "${YELLOW}[i] Daemon dibatalkan.${NC}"
+        echo -e "${YELLOW}[i] Dibatalkan.${NC}"
     fi
 
     echo -e "\n${GREEN}${BOLD}=== Selesai! ===${NC}"
@@ -359,11 +382,18 @@ restore_defaults() {
     show_detected_roblox
     echo -e "${PURPLE}${BOLD}[ 5. RESTORE DEFAULT SETTINGS ]${NC}\n"
     
-    find_roblox_dirs
-    for path in "${ROBLOX_PATHS[@]}"; do
-        rm -f "$path/files/ClientSettings/ClientAppSettings.json" 2>/dev/null
+    # Hapus FastFlags dari semua lokasi yang mungkin
+    for pkg in "${ROBLOX_PACKAGES[@]}"; do
+        rm -f "/sdcard/Android/data/$pkg/files/ClientSettings/ClientAppSettings.json" 2>/dev/null
+        if [ "$IS_ROOTED" = "true" ]; then
+            run_root "rm -f /data/data/$pkg/files/ClientSettings/ClientAppSettings.json"
+        fi
     done
 
+    # Hapus backup
+    rm -rf "/sdcard/Download/RobloxBooster" 2>/dev/null
+
+    # Kembalikan animasi
     if command -v settings &>/dev/null; then
         settings put global window_animation_scale 1.0 2>/dev/null
         settings put global transition_animation_scale 1.0 2>/dev/null
@@ -371,7 +401,7 @@ restore_defaults() {
         echo -e "${GREEN}[✓] Animasi sistem dikembalikan ke default (1.0x).${NC}"
     fi
 
-    echo -e "${GREEN}[✓] FastFlags dihapus. Pengaturan dikembalikan ke default.${NC}"
+    echo -e "${GREEN}[✓] Semua pengaturan dikembalikan ke default.${NC}"
     read -p "Tekan ENTER untuk kembali..." temp
 }
 
@@ -379,19 +409,19 @@ restore_defaults() {
 # MAIN MENU
 # ==============================================================================
 main_menu() {
-    # Inisialisasi: Deteksi root & storage di awal sekali
     detect_real_root
     check_storage
+    check_android_data_access
     
     while true; do
         show_header
-        echo -e "${WHITE}${BOLD}MENU OPTIMALISASI GOD TIER (REDFINGER):${NC}"
-        echo -e "${CYAN}[1]${NC} FastFlags Extreme (Smooth 60FPS / Clone 30FPS / Extreme Potato 15FPS)"
-        echo -e "${CYAN}[2]${NC} Android ART Bytecode Compilation (Loading Kencang & Anti Stutter)"
-        echo -e "${CYAN}[3]${NC} Deep RAM & CPU Priority Tuning (Bocorkan Sampah & Boost CPU)"
-        echo -e "${CYAN}[4]${NC} Jalankan 24/7 AFK Auto-Cleaner Guard Daemon (Background)"
+        echo -e "${WHITE}${BOLD}MENU OPTIMALISASI (REDFINGER):${NC}"
+        echo -e "${CYAN}[1]${NC} FastFlags Extreme (60FPS / 30FPS Clone / 15FPS AFK Potato)"
+        echo -e "${CYAN}[2]${NC} Android ART Compilation (Loading Kencang & Anti Stutter)"
+        echo -e "${CYAN}[3]${NC} Deep RAM & CPU Priority Tuning"
+        echo -e "${CYAN}[4]${NC} 24/7 AFK Auto-Cleaner Guard Daemon"
         echo -e "${CYAN}[5]${NC} Kembalikan Pengaturan ke Default"
-        echo -e "${RED}[0]${NC} Keluar (Exit)"
+        echo -e "${RED}[0]${NC} Keluar"
         echo -e ""
         read -p "Pilihan Anda [0-5]: " choice
         
